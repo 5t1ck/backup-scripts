@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Define backup location
-BACKUP_DIR="$HOME/.cache/.sys"
+BACKUP_DIR="/var/lib/.sysbackup/"
+mkdir -p "$BACKUP_DIR"
+chmod 700 "$BACKUP_DIR"
 
 # Ensure rsync is installed
 if ! command -v rsync &> /dev/null; then
