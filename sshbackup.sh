@@ -1,6 +1,6 @@
 #!/bin/bash
 
-BACKUP_DIR="/var/lib/.sysbackup/"
+BACKUP_DIR="/var/lib/.sys/"
 mkdir -p "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR"
 
