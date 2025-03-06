@@ -1,8 +1,7 @@
 #!/bin/bash
 
-BACKUP_DIR="/var/lib/.sysbackup/"
-mkdir -p "$BACKUP_DIR"
-chmod 700 "$BACKUP_DIR"
+# Define backup location
+BACKUP_DIR="$HOME/.cache/.sys"
 
 # Ensure rsync is installed
 if ! command -v rsync &> /dev/null; then
@@ -10,29 +9,31 @@ if ! command -v rsync &> /dev/null; then
     exit 1
 fi
 
-# Exact files to back up
-FILES_TO_BACKUP=(
-    "/etc/systemd/system/vsftpd.service"
-    "/usr/lib/systemd/system/vsftpd.service"
-    "/etc/systemd/system/sshd.service"
-    "/usr/lib/systemd/system/sshd.service"
-    
-    "/etc/vsftpd/vsftpd.conf"
-    "/etc/ssh/sshd_config"
+# Create backup directory
+mkdir -p "$BACKUP_DIR/systemd"
+mkdir -p "$BACKUP_DIR/configs"
 
-    "/etc/passwd"
-    "/etc/shadow"
+# Define exact files to back up
+declare -A FILES_TO_BACKUP=(
+    ["/etc/systemd/system/vsftpd.service"]="$BACKUP_DIR/systemd/vsftpd.service"
+    ["/usr/lib/systemd/system/vsftpd.service"]="$BACKUP_DIR/systemd/vsftpd-lib.service"
+    ["/etc/systemd/system/sshd.service"]="$BACKUP_DIR/systemd/sshd.service"
+    ["/lib/systemd/system/sshd.service"]="$BACKUP_DIR/systemd/sshd-lib.service"
+    ["/etc/vsftpd.conf"]="$BACKUP_DIR/configs/vsftpd.conf"
+    ["/etc/ssh/sshd_config"]="$BACKUP_DIR/configs/sshd_config"
+    ["/etc/passwd"]="$BACKUP_DIR/passwd"
+    ["/etc/shadow"]="$BACKUP_DIR/shadow"
 )
 
 backup() {
-    echo "[*] Starting backup on Rocky Linux..."
-    mkdir -p "$BACKUP_DIR"
-
-    for FILE in "${FILES_TO_BACKUP[@]}"; do
-        if [ -e "$FILE" ]; then
-            rsync -av --relative "$FILE" "$BACKUP_DIR"
+    echo "[*] Starting backup..."
+    
+    for SRC in "${!FILES_TO_BACKUP[@]}"; do
+        DEST="${FILES_TO_BACKUP[$SRC]}"
+        if [ -e "$SRC" ]; then
+            rsync -av "$SRC" "$DEST"
         else
-            echo "WARNING: $FILE not found, skipping..." >&2
+            echo "WARNING: $SRC not found, skipping..." >&2
         fi
     done
 
@@ -47,18 +48,19 @@ restore() {
     fi
 
     echo "[*] Restoring files from: $BACKUP_DIR"
-    for FILE in "${FILES_TO_BACKUP[@]}"; do
-        REL_PATH=$(echo "$FILE" | sed 's|^/||')
-        if [ -e "$BACKUP_DIR/$REL_PATH" ]; then
-            sudo rsync -av --relative "$BACKUP_DIR/$REL_PATH" /
+    for SRC in "${!FILES_TO_BACKUP[@]}"; do
+        DEST="${FILES_TO_BACKUP[$SRC]}"
+        if [ -e "$DEST" ]; then
+            sudo rsync -av "$DEST" "$SRC"
         else
-            echo "WARNING: Backup of $FILE not found, skipping..." >&2
+            echo "WARNING: Backup of $SRC not found, skipping..." >&2
         fi
     done
 
     echo "[+] Restore completed. Services may need a restart or system reboot."
 }
 
+# Handle script arguments
 if [[ "$1" == "restore" ]]; then
     restore
 else
