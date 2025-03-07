@@ -16,12 +16,12 @@ mkdir -p "$BACKUP_DIR/configs"
 
 # Define exact files to back up
 declare -A FILES_TO_BACKUP=(
-    ["/etc/systemd/system/vsftpd.service"]="$BACKUP_DIR/systemd/vsftpd.service"
-    ["/usr/lib/systemd/system/vsftpd.service"]="$BACKUP_DIR/systemd/vsftpd-lib.service"
-    ["/etc/systemd/system/sshd.service"]="$BACKUP_DIR/systemd/sshd.service"
-    ["/lib/systemd/system/sshd.service"]="$BACKUP_DIR/systemd/sshd-lib.service"
-    ["/etc/vsftpd.conf"]="$BACKUP_DIR/configs/vsftpd.conf"
-    ["/etc/ssh/sshd_config"]="$BACKUP_DIR/configs/sshd_config"
+    ["/etc/systemd/system/vsftpd.service"]="$BACKUP_DIR/ubuntu/vsftpd.service"
+    ["/usr/lib/systemd/system/vsftpd.service"]="$BACKUP_DIR/vsftpd.service"
+    ["/etc/systemd/system/sshd.service"]="$BACKUP_DIR/ubuntu/sshd.service"
+    ["/usr/lib/systemd/system/sshd.service"]="$BACKUP_DIR/sshd.service"
+    ["/etc/vsftpd.conf"]="$BACKUP_DIR/vsftpd.conf"
+    ["/etc/ssh/sshd_config"]="$BACKUP_DIR/sshd_config"
     ["/etc/passwd"]="$BACKUP_DIR/passwd"
     ["/etc/shadow"]="$BACKUP_DIR/shadow"
 )
