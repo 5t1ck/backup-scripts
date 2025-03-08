@@ -20,10 +20,10 @@
 # Preliminary: Choose netstat or ss
 ###############################
 if command -v netstat >/dev/null 2>&1; then
-    EST_CMD="netstat -tnp"
-    LIST_CMD="netstat -tnlp"
+    EST_CMD="netstat -atunp"
+    LIST_CMD="netstat -tnulp"
 else
-    EST_CMD="ss -tnp"
+    EST_CMD="ss -atunp"
     LIST_CMD="ss -tnlp"
 fi
 
