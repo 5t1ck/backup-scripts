@@ -284,7 +284,7 @@ fi
 ###############################
 echo ""
 echo "=== Suspicious Named Files ==="
-find / -type f \( -name "redteam" -o -name "red_herring" -o -name "dropbear" -o -name "watershell" -o -name "*shell*" \) 2>/dev/null
+find / -type f \( -name "*redteam*" -o -name "red_herring" -o -name "dropbear" -o -name "watershell" -o -name "shelly"\) 2>/dev/null
 echo ""
 
 ###############################
