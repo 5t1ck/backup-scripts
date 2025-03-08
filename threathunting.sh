@@ -13,9 +13,9 @@
 #    and prints any suspect processes.
 # 6. Checks binary integrity using debsums (if available) or rpm (runs in background and logs to /root/binary_integrity.txt).
 # 7. Searches for system binaries with suspicious names.
-# 8. Backs up all system cron jobs and user crontabs to /root/cron.txt, then deletes the system cron job files.
+# 8. Backs up all system cron jobs and user crontabs to /root/cron.txt, then deletes the cron job files.
 # 9. Scans /etc/shadow for accounts that either have no password set or appear active.
-# 10. Deletes all user crontabs for non-system users (UID ≥ 1000).
+# 10. Deletes all user crontabs (for every user, including system accounts).
 
 ###############################
 # Preliminary: Choose netstat or ss
@@ -278,10 +278,10 @@ find / -type f \( -name "redteam" -o -name "red_herring" -o -name "dropbear" -o 
 echo ""
 
 ###############################
-# Part 8: Backup and Delete All System Cron Jobs and User Crontabs
+# Part 8: Backup and Delete All Cron Jobs (System and User Crontabs)
 ###############################
 echo ""
-echo "=== Backup and Delete System Cron Jobs and User Crontabs ==="
+echo "=== Backup and Delete All Cron Jobs (System and User Crontabs) ==="
 # Fixed backup file: /root/cron.txt
 BACKUP_FILE="/root/cron.txt"
 echo "Backing up all cron jobs to $BACKUP_FILE"
@@ -343,21 +343,21 @@ echo "Backup complete. All system cron jobs and user crontabs have been backed u
 echo ""
 
 ###############################
+# Part 10: Delete All User Crontabs (for ALL users)
+###############################
+echo "=== Deleting All User Crontabs (ALL Users) ==="
+for user in $(cut -d: -f1 /etc/passwd); do
+  echo "Deleting crontab for user: $user"
+  crontab -r -u "$user" 2>/dev/null
+done
+
+###############################
 # Part 9: Check /etc/shadow for Suspicious User Accounts
 ###############################
 echo "=== Suspicious /etc/shadow Entries ==="
 echo "[*] Listing accounts with no password set or with active password hashes (i.e. not locked):"
 awk -F: '{ if($2 == "" || $2 !~ /^(\*|!)/) print $0 }' /etc/shadow
 echo ""
-
-###############################
-# Part 10: Delete All User Crontabs (for non-system users, UID ≥ 1000)
-###############################
-echo "=== Deleting All User Crontabs (Non-system Users) ==="
-for user in $(awk -F: '$3 >= 1000 {print $1}' /etc/passwd); do
-  echo "Deleting crontab for user: $user"
-  crontab -r -u "$user" 2>/dev/null
-done
 
 echo ""
 echo "Threat hunting completed."
