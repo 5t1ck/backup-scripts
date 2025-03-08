@@ -74,8 +74,7 @@ for service in $running_services; do
     fi
   done
   if [ $found -eq 0 ]; then
-    # Highlight non-default service in red.
-    echo -e "\033[0;31m$service\033[0m"
+    echo -e "$service"
   fi
 done
 echo ""
