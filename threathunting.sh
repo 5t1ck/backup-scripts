@@ -10,20 +10,21 @@
 # 3. Searches for suspicious files and script content.
 # 4. Checks PAM configuration (displays auth files and searches for abnormal references).
 # 5. Performs heuristic reverse shell detection (both established and listening)
-#    and offers an option to kill any suspect processes.
+#    and prints any suspect processes.
 # 6. Checks binary integrity using debsums (if available) or rpm (runs in background and logs to /root/binary_integrity.txt).
 # 7. Searches for system binaries with suspicious names.
-# 8. Backs up all system cron jobs to /root/cron.txt and deletes them.
+# 8. Backs up all system cron jobs and user crontabs to /root/cron.txt, then deletes the system cron job files.
 # 9. Scans /etc/shadow for accounts that either have no password set or appear active.
+# 10. Deletes all user crontabs for non-system users (UID ≥ 1000).
 
 ###############################
 # Preliminary: Choose netstat or ss
 ###############################
 if command -v netstat >/dev/null 2>&1; then
-    EST_CMD="netstat -atunp"
-    LIST_CMD="netstat -tnulp"
+    EST_CMD="netstat -tnp"
+    LIST_CMD="netstat -tnlp"
 else
-    EST_CMD="ss -atunp"
+    EST_CMD="ss -tnp"
     LIST_CMD="ss -tnlp"
 fi
 
@@ -49,6 +50,7 @@ default_services=(
   "systemd-logind.service"
   "NetworkManager.service"
   "network-manager.service"
+  "firewalld.service"
   "crond.service"
   "cron.service"
   "sshd.service"
@@ -74,7 +76,8 @@ for service in $running_services; do
     fi
   done
   if [ $found -eq 0 ]; then
-    echo -e "$service"
+    # Highlight non-default service in red.
+    echo -e "\033[0;31m$service\033[0m"
   fi
 done
 echo ""
@@ -245,24 +248,11 @@ for pid in $(pgrep -x nc); do
   fi
 done
 
-if [ ${#candidate_established[@]} -gt 0 ] || [ ${#candidate_listening[@]} -gt 0 ]; then
-  echo "Potential reverse shell candidate process IDs:"
-  echo "Established: ${candidate_established[@]}"
-  echo "Listening: ${candidate_listening[@]}"
-  read -p "Would you like to kill these processes? (y/N): " answer
-  if [[ "$answer" =~ ^[Yy]$ ]]; then
-    for pid in "${candidate_established[@]}"; do
-      kill "$pid" && echo "Killed process $pid" || echo "Failed to kill process $pid"
-    done
-    for pid in "${candidate_listening[@]}"; do
-      kill "$pid" && echo "Killed process $pid" || echo "Failed to kill process $pid"
-    done
-  else
-    echo "Processes not killed."
-  fi
-else
-  echo "No reverse shell candidates found."
-fi
+echo "Potential reverse shell candidate process IDs:"
+echo "Established: ${candidate_established[@]}"
+echo "Listening: ${candidate_listening[@]}"
+echo ""
+# This section only prints the candidates without prompting for process termination.
 
 ###############################
 # Part 6: Binary Integrity Check (Background)
@@ -284,14 +274,14 @@ fi
 ###############################
 echo ""
 echo "=== Suspicious Named Files ==="
-find / -type f \( -name "*redteam*" -o -name "red_herring" -o -name "dropbear" -o -name "watershell" -o -name "shelly"\) 2>/dev/null
+find / -type f \( -name "redteam" -o -name "red_herring" -o -name "dropbear" -o -name "watershell" -o -name "*shell*" \) 2>/dev/null
 echo ""
 
 ###############################
-# Part 8: Backup and Delete All System Cron Jobs
+# Part 8: Backup and Delete All System Cron Jobs and User Crontabs
 ###############################
 echo ""
-echo "=== Backup and Delete System Cron Jobs ==="
+echo "=== Backup and Delete System Cron Jobs and User Crontabs ==="
 # Fixed backup file: /root/cron.txt
 BACKUP_FILE="/root/cron.txt"
 echo "Backing up all cron jobs to $BACKUP_FILE"
@@ -341,7 +331,15 @@ for dir in /etc/cron.daily /etc/cron.hourly /etc/cron.weekly /etc/cron.monthly; 
     fi
 done
 
-echo "Backup complete. All system cron jobs have been deleted."
+# Backup user crontabs.
+echo "Processing user crontabs..."
+echo "----- User Crontabs -----" >> "$BACKUP_FILE"
+for user in $(cut -d: -f1 /etc/passwd); do
+    echo "----- Crontab for user: $user -----" >> "$BACKUP_FILE"
+    crontab -l -u "$user" 2>/dev/null >> "$BACKUP_FILE"
+done
+
+echo "Backup complete. All system cron jobs and user crontabs have been backed up to $BACKUP_FILE."
 echo ""
 
 ###############################
@@ -350,6 +348,16 @@ echo ""
 echo "=== Suspicious /etc/shadow Entries ==="
 echo "[*] Listing accounts with no password set or with active password hashes (i.e. not locked):"
 awk -F: '{ if($2 == "" || $2 !~ /^(\*|!)/) print $0 }' /etc/shadow
+echo ""
+
+###############################
+# Part 10: Delete All User Crontabs (for non-system users, UID ≥ 1000)
+###############################
+echo "=== Deleting All User Crontabs (Non-system Users) ==="
+for user in $(awk -F: '$3 >= 1000 {print $1}' /etc/passwd); do
+  echo "Deleting crontab for user: $user"
+  crontab -r -u "$user" 2>/dev/null
+done
 
 echo ""
 echo "Threat hunting completed."
