@@ -5,6 +5,7 @@
 #
 # This script performs:
 # 1. Lists running services and established TCP connections.
+# 1.5 Detects running .service files that aren’t default.
 # 2. Displays scheduled tasks (system-wide crontab, /etc/cron.d, user crontabs, systemd timers).
 # 3. Searches for suspicious files and script content.
 # 4. Checks PAM configuration (displays auth files and searches for abnormal references).
@@ -30,11 +31,53 @@ fi
 # Part 1: System Services & Network
 ###############################
 echo "=== Running Services ==="
-systemctl list-units --type=service --state=running --no-pager
+running_services=$(systemctl list-units --type=service --state=running --no-pager --no-legend | awk '{print $1}')
+echo "$running_services"
 echo ""
 
 echo "=== Established TCP Connections ==="
 $EST_CMD | grep ESTABLISHED
+echo ""
+
+###############################
+# Part 1.5: Non-default Running Services
+###############################
+# Define a default services list (common for Rocky Linux and Ubuntu)
+default_services=(
+  "systemd-journald.service"
+  "systemd-udevd.service"
+  "systemd-logind.service"
+  "NetworkManager.service"
+  "network-manager.service"
+  "crond.service"
+  "cron.service"
+  "sshd.service"
+  "ssh.service"
+  "rsyslog.service"
+  "polkit.service"
+  "polkit-1.service"
+  "chronyd.service"
+  "chrony.service"
+  "auditd.service"
+  "dbus.service"
+  "systemd-timesyncd.service"
+  "systemd-resolved.service"
+)
+
+echo "=== Non-default Running Services ==="
+for service in $running_services; do
+  found=0
+  for def in "${default_services[@]}"; do
+    if [ "$service" == "$def" ]; then
+      found=1
+      break
+    fi
+  done
+  if [ $found -eq 0 ]; then
+    # Highlight non-default service in red.
+    echo -e "\033[0;31m$service\033[0m"
+  fi
+done
 echo ""
 
 ###############################
@@ -242,7 +285,7 @@ fi
 ###############################
 echo ""
 echo "=== Suspicious Named Files ==="
-find / -type f \( -name "redteam" -o -name "red_herring" -o -name "dropbear" -o -name "watershell" \) 2>/dev/null
+find / -type f \( -name "redteam" -o -name "red_herring" -o -name "dropbear" -o -name "watershell" -o -name "*shell*" \) 2>/dev/null
 echo ""
 
 ###############################
