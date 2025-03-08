@@ -13,9 +13,9 @@
 #    and prints any suspect processes.
 # 6. Checks binary integrity using debsums (if available) or rpm (runs in background and logs to /root/binary_integrity.txt).
 # 7. Searches for system binaries with suspicious names.
-# 8. Backs up all system cron jobs and user crontabs to /root/cron.txt, then deletes the cron job files.
+# 8. Backs up all cron jobs (system and user crontabs) to /root/cron.txt and deletes them.
 # 9. Scans /etc/shadow for accounts that either have no password set or appear active.
-# 10. Deletes all user crontabs (for every user, including system accounts).
+# 10. Deletes all user crontabs for every user except for "blackteam".
 
 ###############################
 # Preliminary: Choose netstat or ss
@@ -43,7 +43,6 @@ echo ""
 ###############################
 # Part 1.5: Non-default Running Services
 ###############################
-# Define a default services list (common for Rocky Linux and Ubuntu)
 default_services=(
   "systemd-journald.service"
   "systemd-udevd.service"
@@ -76,7 +75,6 @@ for service in $running_services; do
     fi
   done
   if [ $found -eq 0 ]; then
-    # Highlight non-default service in red.
     echo -e "\033[0;31m$service\033[0m"
   fi
 done
@@ -167,7 +165,6 @@ echo ""
 echo "=== Abnormal PAM References ==="
 echo "[*] Extracting all file paths referenced in /etc/pam.d/..."
 paths=$(grep -R -o -E '/[^[:space:]]+' /etc/pam.d/ 2>/dev/null | sort -u)
-# Define normal directories as a whitelist.
 normal_dirs=(
   "/bin/"
   "/sbin/"
@@ -252,7 +249,6 @@ echo "Potential reverse shell candidate process IDs:"
 echo "Established: ${candidate_established[@]}"
 echo "Listening: ${candidate_listening[@]}"
 echo ""
-# This section only prints the candidates without prompting for process termination.
 
 ###############################
 # Part 6: Binary Integrity Check (Background)
@@ -274,7 +270,7 @@ fi
 ###############################
 echo ""
 echo "=== Suspicious Named Files ==="
-find / -type f \( -name "redteam" -o -name "red_herring" -o -name "dropbear" -o -name "watershell" -o -name "*shell*" \) 2>/dev/null
+find / -type f \( -name "*redteam*" -o -name "red_herring" -o -name "dropbear" -o -name "watershell" -o -name "shell" -o -name "shelly" \) 2>/dev/null
 echo ""
 
 ###############################
@@ -282,7 +278,6 @@ echo ""
 ###############################
 echo ""
 echo "=== Backup and Delete All Cron Jobs (System and User Crontabs) ==="
-# Fixed backup file: /root/cron.txt
 BACKUP_FILE="/root/cron.txt"
 echo "Backing up all cron jobs to $BACKUP_FILE"
 echo "Backup created on $(date)" > "$BACKUP_FILE"
@@ -343,12 +338,16 @@ echo "Backup complete. All system cron jobs and user crontabs have been backed u
 echo ""
 
 ###############################
-# Part 10: Delete All User Crontabs (for ALL users)
+# Part 10: Delete All User Crontabs Except for 'blackteam'
 ###############################
-echo "=== Deleting All User Crontabs (ALL Users) ==="
+echo "=== Deleting All User Crontabs (Except for 'blackteam') ==="
 for user in $(cut -d: -f1 /etc/passwd); do
-  echo "Deleting crontab for user: $user"
-  crontab -r -u "$user" 2>/dev/null
+  if [ "$user" != "blackteam" ]; then
+    echo "Deleting crontab for user: $user"
+    crontab -r -u "$user" 2>/dev/null
+  else
+    echo "Preserving crontab for user: blackteam"
+  fi
 done
 
 ###############################
