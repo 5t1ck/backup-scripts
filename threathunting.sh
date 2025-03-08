@@ -10,9 +10,10 @@
 # 4. Checks PAM configuration (displays auth files and searches for abnormal references).
 # 5. Performs heuristic reverse shell detection (both established and listening)
 #    and offers an option to kill any suspect processes.
-# 6. Checks binary integrity using debsums (if available) or rpm.
+# 6. Checks binary integrity using debsums (if available) or rpm (runs in background and logs to /root/binary_integrity.txt).
 # 7. Searches for system binaries with suspicious names.
 # 8. Backs up all system cron jobs to /root/cron.txt and deletes them.
+# 9. Scans /etc/shadow for accounts that either have no password set or appear active.
 
 ###############################
 # Preliminary: Choose netstat or ss
@@ -222,16 +223,16 @@ else
 fi
 
 ###############################
-# Part 6: Binary Integrity Check
+# Part 6: Binary Integrity Check (Background)
 ###############################
 echo ""
 echo "=== Binary Integrity Check ==="
 if command -v debsums >/dev/null 2>&1; then
-    echo "[*] Running debsums -s (this may take a while)..."
-    sudo debsums -s
+    echo "[*] Running debsums -s in background; output to /root/binary_integrity.txt (this may take a while)..."
+    debsums -s > /root/binary_integrity.txt 2>&1 &
 elif command -v rpm >/dev/null 2>&1; then
-    echo "[*] Running rpm -Va (this may take a while)..."
-    sudo rpm -Va
+    echo "[*] Running rpm -Va in background; output to /root/binary_integrity.txt (this may take a while)..."
+    rpm -Va > /root/binary_integrity.txt 2>&1 &
 else
     echo "Neither debsums nor rpm command found. Cannot check binary integrity."
 fi
@@ -242,9 +243,6 @@ fi
 echo ""
 echo "=== Suspicious Named Files ==="
 find / -type f \( -name "redteam" -o -name "red_herring" -o -name "dropbear" -o -name "watershell" \) 2>/dev/null
-echo ""
-echo "=== All Executable Files ==="
-find / -type f -executable 2>/dev/null
 echo ""
 
 ###############################
@@ -302,4 +300,14 @@ for dir in /etc/cron.daily /etc/cron.hourly /etc/cron.weekly /etc/cron.monthly; 
 done
 
 echo "Backup complete. All system cron jobs have been deleted."
+echo ""
+
+###############################
+# Part 9: Check /etc/shadow for Suspicious User Accounts
+###############################
+echo "=== Suspicious /etc/shadow Entries ==="
+echo "[*] Listing accounts with no password set or with active password hashes (i.e. not locked):"
+awk -F: '{ if($2 == "" || $2 !~ /^(\*|!)/) print $0 }' /etc/shadow
+
+echo ""
 echo "Threat hunting completed."
