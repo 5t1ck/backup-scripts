@@ -3,12 +3,13 @@
 # Comprehensive threat hunting script.
 # Must be run as root.
 #
-# This script:
+# This script performs:
 # 1. Lists running services and established TCP connections.
-# 2. Performs heuristic reverse shell detection with an option to kill candidate processes.
-# 3. Gathers scheduled tasks (crontabs and systemd timers).
-# 4. Searches for suspicious files and script content.
-# 5. Checks PAM configuration for potential abuse (prints password-auth and system-auth and searches for bash script references).
+# 2. Displays scheduled tasks (system-wide crontab, cron.d, user crontabs, systemd timers).
+# 3. Searches for suspicious files and script content.
+# 4. Checks PAM configuration (prints password-auth and system-auth, and searches for bash script references).
+# 5. Finally, performs heuristic reverse shell detection (both established and listening)
+#    and offers an option to kill any suspect processes.
 
 ###############################
 # Part 1: System Services & Network
@@ -17,55 +18,13 @@ echo "=== Running Services ==="
 systemctl list-units --type=service --state=running --no-pager
 echo ""
 
-echo "=== Established TCP Connections ==="
-ss -tnp | grep ESTAB
+echo "=== Established TCP Connections (netstat) ==="
+netstat -tnp | grep ESTABLISHED
 echo ""
-
-echo "=== Heuristic Reverse Shell Search ==="
-candidate_pids=()
-
-echo "[*] Checking bash processes for network connections..."
-for pid in $(pgrep -x bash); do
-    conns=$(ss -tnp 2>/dev/null | grep "pid $pid," | grep ESTAB)
-    if [ -n "$conns" ]; then
-        echo "Possible reverse shell candidate (bash):"
-        ps -p "$pid" -o pid,cmd
-        echo "$conns"
-        candidate_pids+=($pid)
-        echo "----------------------------------------"
-    fi
-done
-
-echo "[*] Checking nc processes for network connections..."
-for pid in $(pgrep -x nc); do
-    conns=$(ss -tnp 2>/dev/null | grep "pid $pid," | grep ESTAB)
-    if [ -n "$conns" ]; then
-        echo "Possible reverse shell candidate (nc):"
-        ps -p "$pid" -o pid,cmd
-        echo "$conns"
-        candidate_pids+=($pid)
-        echo "----------------------------------------"
-    fi
-done
-
-if [ ${#candidate_pids[@]} -gt 0 ]; then
-    echo "Potential reverse shell candidate process IDs: ${candidate_pids[@]}"
-    read -p "Would you like to kill these processes? (y/N): " answer
-    if [[ "$answer" =~ ^[Yy]$ ]]; then
-        for pid in "${candidate_pids[@]}"; do
-            kill "$pid" && echo "Killed process $pid" || echo "Failed to kill process $pid"
-        done
-    else
-        echo "Processes not killed."
-    fi
-else
-    echo "No reverse shell candidates found."
-fi
 
 ###############################
 # Part 2: Scheduled Tasks (Crontabs & Timers)
 ###############################
-echo ""
 echo "=== System-Wide Crontab (/etc/crontab) ==="
 if [ -f /etc/crontab ]; then
   cat /etc/crontab
@@ -76,34 +35,34 @@ echo ""
 
 echo "=== Cron.d Files (/etc/cron.d) ==="
 if [ -d /etc/cron.d ]; then
-    for file in /etc/cron.d/*; do
-        [ -e "$file" ] || continue
-        echo "---- $file ----"
-        cat "$file"
-        echo "----------------------------------------"
-    done
+  for file in /etc/cron.d/*; do
+    [ -e "$file" ] || continue
+    echo "---- $file ----"
+    cat "$file"
+    echo "----------------------------------------"
+  done
 else
-    echo "/etc/cron.d directory not found."
+  echo "/etc/cron.d directory not found."
 fi
 echo ""
 
 echo "=== Cron Periodic Jobs (daily, hourly, weekly, monthly) ==="
 for dir in /etc/cron.daily /etc/cron.hourly /etc/cron.weekly /etc/cron.monthly; do
-    if [ -d "$dir" ]; then
-        echo "---- Directory: $dir ----"
-        ls -la "$dir"
-        echo "----------------------------------------"
-    else
-        echo "$dir not found."
-    fi
+  if [ -d "$dir" ]; then
+    echo "---- Directory: $dir ----"
+    ls -la "$dir"
+    echo "----------------------------------------"
+  else
+    echo "$dir not found."
+  fi
 done
 echo ""
 
 echo "=== User Crontabs ==="
 for user in $(cut -d: -f1 /etc/passwd); do
-    echo "---- Crontab for user: $user ----"
-    crontab -l -u "$user" 2>/dev/null || echo "No crontab for $user."
-    echo "----------------------------------------"
+  echo "---- Crontab for user: $user ----"
+  crontab -l -u "$user" 2>/dev/null || echo "No crontab for $user."
+  echo "----------------------------------------"
 done
 echo ""
 
@@ -144,5 +103,81 @@ echo ""
 echo "=== Searching /etc/pam.d for bash script references ==="
 grep -R -E '(/bin/bash|\.sh)' /etc/pam.d/ 2>/dev/null
 echo ""
+
+###############################
+# Part 5: Reverse Shell Detection (Final Section)
+###############################
+echo "=== Heuristic Reverse Shell Search (Final Section) ==="
+# Initialize arrays for established and listening candidates.
+candidate_established=()
+candidate_listening=()
+
+echo "[*] Checking bash processes for established network connections..."
+for pid in $(pgrep -x bash); do
+  conns=$(netstat -tnp 2>/dev/null | grep "$pid/" | grep ESTABLISHED)
+  if [ -n "$conns" ]; then
+    echo "Possible reverse shell candidate (bash, established):"
+    ps -p "$pid" -o pid,cmd
+    echo "$conns"
+    candidate_established+=($pid)
+    echo "----------------------------------------"
+  fi
+done
+
+echo "[*] Checking nc processes for established network connections..."
+for pid in $(pgrep -x nc); do
+  conns=$(netstat -tnp 2>/dev/null | grep "$pid/" | grep ESTABLISHED)
+  if [ -n "$conns" ]; then
+    echo "Possible reverse shell candidate (nc, established):"
+    ps -p "$pid" -o pid,cmd
+    echo "$conns"
+    candidate_established+=($pid)
+    echo "----------------------------------------"
+  fi
+done
+
+echo "[*] Checking bash processes for listening connections..."
+for pid in $(pgrep -x bash); do
+  listening=$(netstat -tnlp 2>/dev/null | grep "$pid/" | grep LISTEN)
+  if [ -n "$listening" ]; then
+    echo "Possible listening reverse shell candidate (bash):"
+    ps -p "$pid" -o pid,cmd
+    echo "$listening"
+    candidate_listening+=($pid)
+    echo "----------------------------------------"
+  fi
+done
+
+echo "[*] Checking nc processes for listening connections..."
+for pid in $(pgrep -x nc); do
+  listening=$(netstat -tnlp 2>/dev/null | grep "$pid/" | grep LISTEN)
+  if [ -n "$listening" ]; then
+    echo "Possible listening reverse shell candidate (nc):"
+    ps -p "$pid" -o pid,cmd
+    echo "$listening"
+    candidate_listening+=($pid)
+    echo "----------------------------------------"
+  fi
+done
+
+# Summary and prompt for action.
+if [ ${#candidate_established[@]} -gt 0 ] || [ ${#candidate_listening[@]} -gt 0 ]; then
+  echo "Potential reverse shell candidate process IDs:"
+  echo "Established: ${candidate_established[@]}"
+  echo "Listening: ${candidate_listening[@]}"
+  read -p "Would you like to kill these processes? (y/N): " answer
+  if [[ "$answer" =~ ^[Yy]$ ]]; then
+    for pid in "${candidate_established[@]}"; do
+      kill "$pid" && echo "Killed process $pid" || echo "Failed to kill process $pid"
+    done
+    for pid in "${candidate_listening[@]}"; do
+      kill "$pid" && echo "Killed process $pid" || echo "Failed to kill process $pid"
+    done
+  else
+    echo "Processes not killed."
+  fi
+else
+  echo "No reverse shell candidates found."
+fi
 
 echo "Threat hunting completed."
